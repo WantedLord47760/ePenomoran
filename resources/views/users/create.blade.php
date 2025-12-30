@@ -65,8 +65,12 @@
                             <select name="role" class="form-select @error('role') is-invalid @enderror" required>
                                 <option value="">Pilih Role</option>
                                 <option value="admin" {{ old('role') == 'admin' ? 'selected' : '' }}>Admin</option>
+                                <option value="admin_surat_masuk" {{ old('role') == 'admin_surat_masuk' ? 'selected' : '' }}>
+                                    Admin Surat Masuk</option>
+                                <option value="admin_surat_keluar" {{ old('role') == 'admin_surat_keluar' ? 'selected' : '' }}>Admin Surat Keluar</option>
                                 <option value="pemimpin" {{ old('role') == 'pemimpin' ? 'selected' : '' }}>Pemimpin</option>
                                 <option value="operator" {{ old('role') == 'operator' ? 'selected' : '' }}>Operator</option>
+                                <option value="pegawai" {{ old('role') == 'pegawai' ? 'selected' : '' }}>Pegawai</option>
                             </select>
                             @error('role')
                                 <div class="invalid-feedback">{{ $message }}</div>

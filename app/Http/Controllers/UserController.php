@@ -43,7 +43,7 @@ class UserController extends BaseController
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
             'password' => 'required|min:8|confirmed',
-            'role' => 'required|in:admin,pemimpin,operator',
+            'role' => 'required|in:admin,admin_surat_masuk,admin_surat_keluar,pemimpin,operator,pegawai',
         ]);
 
         $validated['password'] = Hash::make($validated['password']);
@@ -70,7 +70,7 @@ class UserController extends BaseController
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|email|unique:users,email,' . $user->id,
-            'role' => 'required|in:admin,pemimpin,operator',
+            'role' => 'required|in:admin,admin_surat_masuk,admin_surat_keluar,pemimpin,operator,pegawai',
         ]);
 
         // Optional password update

@@ -66,10 +66,14 @@
                             <select name="role" class="form-select @error('role') is-invalid @enderror" required>
                                 <option value="admin" {{ old('role', $user->role) == 'admin' ? 'selected' : '' }}>Admin
                                 </option>
+                                <option value="admin_surat_masuk" {{ old('role', $user->role) == 'admin_surat_masuk' ? 'selected' : '' }}>Admin Surat Masuk</option>
+                                <option value="admin_surat_keluar" {{ old('role', $user->role) == 'admin_surat_keluar' ? 'selected' : '' }}>Admin Surat Keluar</option>
                                 <option value="pemimpin" {{ old('role', $user->role) == 'pemimpin' ? 'selected' : '' }}>
                                     Pemimpin</option>
                                 <option value="operator" {{ old('role', $user->role) == 'operator' ? 'selected' : '' }}>
                                     Operator</option>
+                                <option value="pegawai" {{ old('role', $user->role) == 'pegawai' ? 'selected' : '' }}>Pegawai
+                                </option>
                             </select>
                             @error('role')
                                 <div class="invalid-feedback">{{ $message }}</div>

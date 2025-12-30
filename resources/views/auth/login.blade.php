@@ -17,7 +17,7 @@
                         </div>
 
                         <h3 class="text-center mb-2 fw-bold">Selamat Datang</h3>
-                        <p class="text-center text-muted mb-4">Sistem Penomoran Surat Digital</p>
+                        <p class="text-center text-muted mb-4">E-Num</p>
 
                         <form method="POST" action="{{ route('login') }}">
                             @csrf
@@ -52,11 +52,6 @@
                             <button type="submit" class="btn btn-gradient w-100 mb-3">
                                 <i class="bi bi-box-arrow-in-right me-2"></i>Masuk
                             </button>
-
-                            <p class="text-center mb-0">
-                                Belum punya akun? <a href="{{ route('register') }}"
-                                    class="text-decoration-none fw-semibold">Daftar di sini</a>
-                            </p>
                         </form>
                     </div>
                 </div>

@@ -57,6 +57,11 @@ class SuratController extends Controller
             $query->whereDate('tanggal_surat', '<=', $request->date_to);
         }
 
+        // Pegawai can only see their own letters
+        if (Auth::user()->role === 'pegawai') {
+            $query->where('user_id', Auth::id());
+        }
+
         // Sorting
         $sortBy = $request->get('sort_by', 'created_at');
         $sortOrder = $request->get('sort_order', 'desc');
@@ -106,52 +111,37 @@ class SuratController extends Controller
             'tanggal_surat' => 'required|date',
             'tujuan' => 'required|string|max:255',
             'perihal' => 'required|string',
+            'isi_surat' => 'nullable|string',
+            'metode_pembuatan' => 'required|in:Srikandi,TTE,Manual',
+            'file_surat' => 'nullable|file|mimes:doc,docx,pdf|max:10240',
         ]);
 
         DB::beginTransaction();
         try {
-            // CRITICAL: Acquire exclusive lock on tipe_surat row
-            // This prevents race conditions by forcing sequential access
-            $tipeSurat = TipeSurat::where('id', $validated['tipe_surat_id'])
-                ->lockForUpdate()
-                ->firstOrFail();
-
-            $tanggalSurat = \Carbon\Carbon::parse($validated['tanggal_surat']);
-            $currentYear = $tanggalSurat->year;
-
-            // YEARLY RESET LOGIC
-            // Check if year has changed since last letter generation
-            if ($tipeSurat->last_reset_year !== null && $tipeSurat->last_reset_year != $currentYear) {
-                // New year detected - reset counter to 0
-                $tipeSurat->nomor_terakhir = 0;
-                $tipeSurat->last_reset_year = $currentYear;
-                $tipeSurat->save();
-            } elseif ($tipeSurat->last_reset_year === null) {
-                // First letter ever for this type - initialize year
-                $tipeSurat->last_reset_year = $currentYear;
-                $tipeSurat->save();
+            // Handle file upload
+            $filePath = null;
+            $originalName = null;
+            if ($request->hasFile('file_surat')) {
+                $file = $request->file('file_surat');
+                $originalName = $file->getClientOriginalName();
+                $filePath = $file->store('surat-files', 'public');
             }
 
-            // Generate letter number
-            $letterData = $this->letterNumberingService->generateLetterNumber(
-                $tipeSurat,
-                $tanggalSurat
-            );
-
-            // Create surat
+            // Create surat WITHOUT number - number will be assigned on approval
             $surat = Surat::create([
                 'user_id' => Auth::id(),
                 'tipe_surat_id' => $validated['tipe_surat_id'],
                 'tanggal_surat' => $validated['tanggal_surat'],
                 'tujuan' => $validated['tujuan'],
                 'perihal' => $validated['perihal'],
-                'nomor_urut' => $letterData['nomor_urut'],
-                'nomor_surat_full' => $letterData['nomor_surat_full'],
-                'status' => '0',
+                'isi_surat' => $validated['isi_surat'] ?? null,
+                'metode_pembuatan' => $validated['metode_pembuatan'],
+                'file_surat' => $filePath,
+                'file_surat_original_name' => $originalName,
+                'nomor_urut' => null, // No number on creation
+                'nomor_surat_full' => null, // No number on creation
+                'status' => '0', // Pending
             ]);
-
-            // Increment counter (still inside lock)
-            $tipeSurat->increment('nomor_terakhir');
 
             // Create audit log
             \App\Models\SuratAuditLog::log(
@@ -159,27 +149,13 @@ class SuratController extends Controller
                 'created',
                 null,
                 '0',
-                'Letter created with number: ' . $letterData['nomor_surat_full']
+                'Letter created (pending approval for numbering)'
             );
 
             DB::commit();
 
             return redirect()->route('surat.index')
-                ->with('success', 'Surat berhasil dibuat dengan nomor: ' . $letterData['nomor_surat_full']);
-
-        } catch (\Illuminate\Database\QueryException $e) {
-            DB::rollBack();
-
-            // Check if unique constraint violation (duplicate number)
-            if ($e->getCode() == 23000) {
-                \Log::error('Duplicate letter number detected: ' . $e->getMessage());
-                return back()->withErrors(['error' => 'Nomor surat duplikat terdeteksi. Silakan coba lagi.'])
-                    ->withInput();
-            }
-
-            \Log::error('Database error creating surat: ' . $e->getMessage());
-            return back()->withErrors(['error' => 'Terjadi kesalahan database. Hubungi administrator.'])
-                ->withInput();
+                ->with('success', 'Surat berhasil dibuat. Menunggu persetujuan untuk penomoran.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -197,10 +173,7 @@ class SuratController extends Controller
 
     public function edit(Surat $surat)
     {
-        // Only admin and operator can edit
-        if (!in_array(Auth::user()->role, ['admin', 'operator'])) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->authorize('update', $surat);
 
         $tipeSurats = TipeSurat::all();
         return view('surat.edit', compact('surat', 'tipeSurats'));
@@ -210,27 +183,81 @@ class SuratController extends Controller
     {
         $this->authorize('update', $surat);
 
-        $validated = $request->validate([
+        // Different validation rules based on user role and surat status
+        $rules = [
             'tujuan' => 'required|string|max:255',
             'perihal' => 'required|string',
-        ]);
+            'isi_surat' => 'nullable|string',
+            'file_surat' => 'nullable|file|mimes:doc,docx,pdf|max:10240',
+        ];
+
+        // Only require nomor_surat_full for admin/operator on approved letters
+        if ($surat->nomor_surat_full && in_array(Auth::user()->role, ['admin', 'operator'])) {
+            $rules['nomor_surat_full'] = 'nullable|string|max:255';
+        }
+
+        $validated = $request->validate($rules);
 
         DB::beginTransaction();
         try {
-            $surat->update($validated);
+            // Handle file upload
+            if ($request->hasFile('file_surat')) {
+                // Delete old file if exists
+                if ($surat->file_surat) {
+                    \Storage::disk('public')->delete($surat->file_surat);
+                }
+
+                $file = $request->file('file_surat');
+                $originalName = $file->getClientOriginalName();
+                $filePath = $file->store('surat-files', 'public');
+
+                $surat->file_surat = $filePath;
+                $surat->file_surat_original_name = $originalName;
+            }
+
+            $oldNomor = $surat->nomor_surat_full;
+
+            // Update fields
+            if (isset($validated['nomor_surat_full'])) {
+                $surat->nomor_surat_full = $validated['nomor_surat_full'];
+            }
+            $surat->tujuan = $validated['tujuan'];
+            $surat->perihal = $validated['perihal'];
+            $surat->isi_surat = $validated['isi_surat'] ?? $surat->isi_surat;
+
+            // Handle resubmit from pegawai
+            if ($request->input('resubmit') && $surat->status == '2') {
+                $surat->status = '0'; // Set back to pending
+                $surat->rejection_reason = null;
+                $surat->rejected_at = null;
+                $surat->rejected_by = null;
+            }
+
+            $surat->save();
 
             // Audit log
+            $logMessage = "Updated surat";
+            if ($request->input('resubmit')) {
+                $logMessage = "Resubmitted surat after rejection";
+            } elseif ($oldNomor !== ($validated['nomor_surat_full'] ?? $oldNomor)) {
+                $logMessage .= " (nomor changed from {$oldNomor} to {$validated['nomor_surat_full']})";
+            }
             \App\Models\SuratAuditLog::log(
                 $surat->id,
-                'updated',
+                $request->input('resubmit') ? 'resubmitted' : 'updated',
                 null,
                 null,
-                "Updated tujuan/perihal"
+                $logMessage
             );
 
             DB::commit();
+
+            $successMessage = $request->input('resubmit')
+                ? 'Surat berhasil diajukan ulang dan menunggu persetujuan.'
+                : 'Surat berhasil diperbarui.';
+
             return redirect()->route('surat.index')
-                ->with('success', 'Surat berhasil diperbarui.');
+                ->with('success', $successMessage);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -245,6 +272,10 @@ class SuratController extends Controller
 
         DB::beginTransaction();
         try {
+            // Store info for resequencing before deletion
+            $tipeSuratId = $surat->tipe_surat_id;
+            $year = \Carbon\Carbon::parse($surat->tanggal_surat)->year;
+
             // Track who deleted it
             $surat->deleted_by = Auth::id();
             $surat->save();
@@ -261,15 +292,59 @@ class SuratController extends Controller
                 'Letter soft-deleted'
             );
 
+            // Resequence remaining letters of same type and year
+            $resequencedCount = $this->letterNumberingService->resequenceLetterNumbers(
+                $tipeSuratId,
+                $year
+            );
+
+            if ($resequencedCount > 0) {
+                \App\Models\SuratAuditLog::log(
+                    $surat->id,
+                    'resequence_triggered',
+                    null,
+                    null,
+                    "Deletion triggered resequencing of {$resequencedCount} letters"
+                );
+            }
+
             DB::commit();
+            $message = 'Surat berhasil dihapus.';
+            if ($resequencedCount > 0) {
+                $message .= " {$resequencedCount} surat lain telah dinomori ulang.";
+            }
             return redirect()->route('surat.index')
-                ->with('success', 'Surat berhasil dihapus.');
+                ->with('success', $message);
 
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Error deleting surat: ' . $e->getMessage());
             return back()->with('error', 'Gagal menghapus surat.');
         }
+    }
+
+    /**
+     * Show approve confirmation page
+     */
+    public function showApprove(Surat $surat)
+    {
+        $this->authorize('approve', $surat);
+
+        $surat->load(['user', 'tipeSurat']);
+
+        return view('surat.approve', compact('surat'));
+    }
+
+    /**
+     * Show reject form page
+     */
+    public function showReject(Surat $surat)
+    {
+        $this->authorize('reject', $surat);
+
+        $surat->load(['user', 'tipeSurat']);
+
+        return view('surat.reject', compact('surat'));
     }
 
     public function approve(Surat $surat)
@@ -280,11 +355,41 @@ class SuratController extends Controller
         try {
             $oldStatus = $surat->status;
 
+            // Load tipe surat with lock for number generation
+            $tipeSurat = TipeSurat::where('id', $surat->tipe_surat_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            $tanggalSurat = \Carbon\Carbon::parse($surat->tanggal_surat);
+            $currentYear = $tanggalSurat->year;
+
+            // YEARLY RESET LOGIC
+            if ($tipeSurat->last_reset_year !== null && $tipeSurat->last_reset_year != $currentYear) {
+                $tipeSurat->nomor_terakhir = 0;
+                $tipeSurat->last_reset_year = $currentYear;
+                $tipeSurat->save();
+            } elseif ($tipeSurat->last_reset_year === null) {
+                $tipeSurat->last_reset_year = $currentYear;
+                $tipeSurat->save();
+            }
+
+            // Generate letter number NOW (on approval)
+            $letterData = $this->letterNumberingService->generateLetterNumber(
+                $tipeSurat,
+                $tanggalSurat
+            );
+
+            // Update surat with number and approval
             $surat->update([
+                'nomor_urut' => $letterData['nomor_urut'],
+                'nomor_surat_full' => $letterData['nomor_surat_full'],
                 'status' => '1',
                 'approved_at' => now(),
                 'approved_by' => Auth::id(),
             ]);
+
+            // Increment counter
+            $tipeSurat->increment('nomor_terakhir');
 
             // Audit log
             \App\Models\SuratAuditLog::log(
@@ -292,11 +397,11 @@ class SuratController extends Controller
                 'approved',
                 $oldStatus,
                 '1',
-                'Letter approved by ' . Auth::user()->name
+                'Letter approved and numbered: ' . $letterData['nomor_surat_full'] . ' by ' . Auth::user()->name
             );
 
             DB::commit();
-            return back()->with('success', 'Surat berhasil disetujui.');
+            return redirect()->route('surat.index')->with('success', 'Surat berhasil disetujui dengan nomor: ' . $letterData['nomor_surat_full']);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -330,7 +435,7 @@ class SuratController extends Controller
             );
 
             DB::commit();
-            return back()->with('success', 'Surat berhasil ditolak.');
+            return redirect()->route('surat.index')->with('success', 'Surat berhasil ditolak.');
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -346,4 +451,64 @@ class SuratController extends Controller
         $surat->load(['user', 'tipeSurat', 'approver']);
         return view('surat.cetak', compact('surat'));
     }
+
+    /**
+     * Download the uploaded letter file
+     */
+    public function download(Surat $surat)
+    {
+        if (!$surat->file_surat) {
+            return back()->with('error', 'File surat tidak ditemukan.');
+        }
+
+        $filePath = storage_path('app/public/' . $surat->file_surat);
+
+        if (!file_exists($filePath)) {
+            return back()->with('error', 'File surat tidak ditemukan di server.');
+        }
+
+        return response()->download(
+            $filePath,
+            $surat->file_surat_original_name ?? basename($surat->file_surat)
+        );
+    }
+
+    /**
+     * Resubmit a rejected letter (changes status back to pending)
+     */
+    public function resubmit(Surat $surat)
+    {
+        $this->authorize('resubmit', $surat);
+
+        DB::beginTransaction();
+        try {
+            $oldStatus = $surat->status;
+
+            // Reset to pending status
+            $surat->update([
+                'status' => '0',
+                'rejected_at' => null,
+                'rejected_by' => null,
+                'rejection_reason' => null,
+            ]);
+
+            // Audit log
+            \App\Models\SuratAuditLog::log(
+                $surat->id,
+                'resubmitted',
+                $oldStatus,
+                '0',
+                'Letter resubmitted for review by ' . Auth::user()->name
+            );
+
+            DB::commit();
+            return back()->with('success', 'Surat berhasil diajukan ulang untuk peninjauan.');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Resubmit failed: ' . $e->getMessage());
+            return back()->with('error', 'Gagal mengajukan ulang surat.');
+        }
+    }
 }
+

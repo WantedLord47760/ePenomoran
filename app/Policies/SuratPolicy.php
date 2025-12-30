@@ -12,8 +12,8 @@ class SuratPolicy
      */
     public function viewAny(User $user): bool
     {
-        // All authenticated users can view the list
-        return true;
+        // Exclude admin_surat_masuk - they should not see surat keluar
+        return $user->role !== 'admin_surat_masuk';
     }
 
     /**
@@ -21,8 +21,8 @@ class SuratPolicy
      */
     public function view(User $user, Surat $surat): bool
     {
-        // All authenticated users can view individual letters
-        return true;
+        // Exclude admin_surat_masuk - they should not see surat keluar
+        return $user->role !== 'admin_surat_masuk';
     }
 
     /**
@@ -30,8 +30,8 @@ class SuratPolicy
      */
     public function create(User $user): bool
     {
-        // Only admin and operator can create letters
-        return in_array($user->role, ['admin', 'operator']);
+        // Admin, admin_surat_keluar, operator, and pegawai can create letters
+        return in_array($user->role, ['admin', 'admin_surat_keluar', 'operator', 'pegawai']);
     }
 
     /**
@@ -39,17 +39,17 @@ class SuratPolicy
      */
     public function update(User $user, Surat $surat): bool
     {
-        // Only admin and operator can update
-        if (!in_array($user->role, ['admin', 'operator'])) {
-            return false;
+        // Admin, admin_surat_keluar, and operator can update any letter
+        if (in_array($user->role, ['admin', 'admin_surat_keluar', 'operator'])) {
+            return true;
         }
 
-        // Cannot update approved letters (immutability rule)
-        if ($surat->isApproved()) {
-            return false;
+        // Pegawai can only update their own rejected letters (for resubmission)
+        if ($user->role === 'pegawai') {
+            return $surat->user_id === $user->id && $surat->status === '2';
         }
 
-        return true;
+        return false;
     }
 
     /**
@@ -57,8 +57,8 @@ class SuratPolicy
      */
     public function delete(User $user, Surat $surat): bool
     {
-        // Only admin can delete
-        if ($user->role !== 'admin') {
+        // Only admin and admin_surat_keluar can delete
+        if (!in_array($user->role, ['admin', 'admin_surat_keluar'])) {
             return false;
         }
 
@@ -75,8 +75,8 @@ class SuratPolicy
      */
     public function approve(User $user, Surat $surat): bool
     {
-        // Only admin and pemimpin can approve
-        if (!in_array($user->role, ['admin', 'pemimpin'])) {
+        // Admin, admin_surat_keluar, pemimpin, and operator can approve
+        if (!in_array($user->role, ['admin', 'admin_surat_keluar', 'pemimpin', 'operator'])) {
             return false;
         }
 
@@ -89,8 +89,27 @@ class SuratPolicy
      */
     public function reject(User $user, Surat $surat): bool
     {
-        // Same rules as approve
-        return $this->approve($user, $surat);
+        // Same roles as approve
+        if (!in_array($user->role, ['admin', 'admin_surat_keluar', 'pemimpin', 'operator'])) {
+            return false;
+        }
+
+        // Can only reject pending letters
+        return $surat->status === '0';
+    }
+
+    /**
+     * Determine if the user can resubmit a rejected letter
+     */
+    public function resubmit(User $user, Surat $surat): bool
+    {
+        // Pegawai can resubmit their own rejected letters
+        if ($user->role === 'pegawai' && $surat->user_id === $user->id && $surat->status === '2') {
+            return true;
+        }
+
+        // Admin and operator can resubmit any rejected letter
+        return in_array($user->role, ['admin', 'operator']) && $surat->status === '2';
     }
 
     /**
@@ -102,3 +121,4 @@ class SuratPolicy
         return $surat->isApproved();
     }
 }
+

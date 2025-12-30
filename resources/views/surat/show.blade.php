@@ -54,12 +54,31 @@
                                 <th>Dibuat Pada</th>
                                 <td>{{ $surat->created_at->format('d F Y H:i') }}</td>
                             </tr>
+                            @if($surat->file_surat)
+                                <tr>
+                                    <th>File Surat</th>
+                                    <td>
+                                        <i class="bi bi-file-earmark-text me-1"></i>
+                                        {{ $surat->file_surat_original_name ?? 'File Surat' }}
+                                        <a href="{{ route('surat.download', $surat) }}"
+                                            class="btn btn-sm btn-outline-primary ms-2">
+                                            <i class="bi bi-download"></i> Download
+                                        </a>
+                                    </td>
+                                </tr>
+                            @endif
                         </table>
 
                         <div class="d-flex gap-2 mt-4">
                             <a href="{{ route('surat.index') }}" class="btn btn-secondary">
                                 <i class="bi bi-arrow-left me-2"></i>Kembali
                             </a>
+
+                            @if($surat->file_surat)
+                                <a href="{{ route('surat.download', $surat) }}" class="btn btn-info">
+                                    <i class="bi bi-download me-2"></i>Download File
+                                </a>
+                            @endif
 
                             @if(in_array(auth()->user()->role, ['admin', 'operator']))
                                 <a href="{{ route('surat.edit', $surat) }}" class="btn btn-warning">

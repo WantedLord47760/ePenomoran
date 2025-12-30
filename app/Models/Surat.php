@@ -15,6 +15,10 @@ class Surat extends Model
         'tanggal_surat',
         'tujuan',
         'perihal',
+        'isi_surat',
+        'file_surat',
+        'file_surat_original_name',
+        'metode_pembuatan',
         'nomor_urut',
         'nomor_surat_full',
         'status',
@@ -72,10 +76,69 @@ class Surat extends Model
     }
 
     /**
+     * Check if letter is pending
+     */
+    public function isPending(): bool
+    {
+        return $this->status === '0';
+    }
+
+    /**
+     * Check if letter is rejected
+     */
+    public function isRejected(): bool
+    {
+        return $this->status === '2';
+    }
+
+    /**
      * Check if letter can be modified
      */
     public function canBeModified(): bool
     {
         return $this->status !== '1';
     }
+
+    /**
+     * Check if letter has been assigned a number
+     */
+    public function hasNumber(): bool
+    {
+        return !empty($this->nomor_surat_full);
+    }
+
+    /**
+     * Get display number (shows "Draft/Menunggu" if no number assigned)
+     */
+    public function getDisplayNumber(): string
+    {
+        return $this->nomor_surat_full ?? 'Draft/Menunggu';
+    }
+
+    /**
+     * Get status label
+     */
+    public function getStatusLabel(): string
+    {
+        return match ($this->status) {
+            '0' => 'Pending',
+            '1' => 'Approved',
+            '2' => 'Rejected',
+            default => 'Unknown',
+        };
+    }
+
+    /**
+     * Get status badge class
+     */
+    public function getStatusBadgeClass(): string
+    {
+        return match ($this->status) {
+            '0' => 'bg-warning',
+            '1' => 'bg-success',
+            '2' => 'bg-danger',
+            default => 'bg-secondary',
+        };
+    }
 }
+

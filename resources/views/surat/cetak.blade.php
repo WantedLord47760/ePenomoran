@@ -3,124 +3,178 @@
 @section('title', 'Cetak Surat')
 
 @section('content')
-    <div class="print-container">
-        <div class="letterhead">
-            <div class="logo-section">
-                {{-- Add your institution logo here --}}
-                <div class="logo-placeholder">
-                    <i class="bi bi-building" style="font-size: 3rem;"></i>
+    {{-- Letter Information Header --}}
+    <div class="letter-info-card">
+        <div class="card-glass p-4 mb-4">
+            <div class="row">
+                <div class="col-md-6">
+                    <table class="table table-borderless mb-0">
+                        <tr>
+                            <td width="150"><strong>Nomor Surat</strong></td>
+                            <td width="20">:</td>
+                            <td><strong class="text-primary">{{ $surat->nomor_surat_full }}</strong></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tanggal</strong></td>
+                            <td>:</td>
+                            <td>{{ $surat->tanggal_surat->isoFormat('D MMMM YYYY') }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tipe Surat</strong></td>
+                            <td>:</td>
+                            <td>{{ $surat->tipeSurat->jenis_surat }}</td>
+                        </tr>
+                    </table>
                 </div>
-            </div>
-            <div class="header-text">
-                <h2 class="institution-name">NAMA INSTITUSI</h2>
-                <p class="institution-address">
-                    Alamat Institusi<br>
-                    Telepon: (021) 123-4567 | Email: info@institusi.go.id
-                </p>
-            </div>
-        </div>
-
-        <hr class="header-divider">
-
-        <div class="letter-content">
-            <table class="letter-meta">
-                <tr>
-                    <td width="150">Nomor</td>
-                    <td width="20">:</td>
-                    <td><strong>{{ $surat->nomor_surat_full }}</strong></td>
-                </tr>
-                <tr>
-                    <td>Tanggal</td>
-                    <td>:</td>
-                    <td>{{ $surat->tanggal_surat->isoFormat('D MMMM YYYY') }}</td>
-                </tr>
-                <tr>
-                    <td>Tipe Surat</td>
-                    <td>:</td>
-                    <td>{{ $surat->tipeSurat->jenis_surat }}</td>
-                </tr>
-                <tr>
-                    <td>Kepada</td>
-                    <td>:</td>
-                    <td>{{ $surat->tujuan }}</td>
-                </tr>
-            </table>
-
-            <div class="letter-body">
-                <p><strong>Perihal: {{ $surat->perihal }}</strong></p>
-
-                <p class="mt-4">Yang bertanda tangan di bawah ini,</p>
-
-                {{-- Letter body content - customize as needed --}}
-                <div class="content-area">
-                    <p>Dengan hormat,</p>
-                    <p>{{ $surat->perihal }}</p>
+                <div class="col-md-6">
+                    <table class="table table-borderless mb-0">
+                        <tr>
+                            <td width="150"><strong>Kepada</strong></td>
+                            <td width="20">:</td>
+                            <td>{{ $surat->tujuan }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Perihal</strong></td>
+                            <td>:</td>
+                            <td>{{ $surat->perihal }}</td>
+                        </tr>
+                        <tr>
+                            <td><strong>Status</strong></td>
+                            <td>:</td>
+                            <td><span class="badge bg-success">Approved</span></td>
+                        </tr>
+                    </table>
                 </div>
-
-                <p class="mt-4">Demikian surat ini kami sampaikan. Atas perhatian dan kerjasamanya kami ucapkan terima
-                    kasih.</p>
-            </div>
-
-            <div class="signature-section">
-                <div class="signature-box">
-                    <p class="mb-1">{{ $surat->tipeSurat->jenis_surat }}</p>
-                    <p class="mb-5"><i>{{ $surat->approved_at ? $surat->approved_at->isoFormat('D MMMM YYYY') : '' }}</i>
-                    </p>
-
-                    <p class="mt-5 pt-5"><strong><u>{{ $surat->approver->name ?? '-' }}</u></strong></p>
-                    <p>{{ $surat->approver ? ucfirst($surat->approver->role) : '' }}</p>
-                </div>
-            </div>
-
-            <div class="footer-info">
-                <small class="text-muted">
-                    <i class="bi bi-info-circle"></i>
-                    Dibuat oleh: {{ $surat->user->name }} |
-                    Disetujui oleh: {{ $surat->approver->name ?? '-' }} pada
-                    {{ $surat->approved_at ? $surat->approved_at->isoFormat('D MMMM YYYY HH:mm') : '-' }}
-                </small>
             </div>
         </div>
     </div>
 
+    {{-- File Preview Section --}}
+    @if($surat->file_surat)
+        @php
+            $fileExtension = strtolower(pathinfo($surat->file_surat, PATHINFO_EXTENSION));
+            $fileUrl = asset('storage/' . $surat->file_surat);
+        @endphp
+
+        <div class="file-preview-container">
+            @if($fileExtension === 'pdf')
+                {{-- PDF Preview --}}
+                <div class="pdf-preview">
+                    <embed src="{{ $fileUrl }}" type="application/pdf" width="100%" height="800px">
+                </div>
+            @else
+                {{-- Word Document Preview using Google Docs Viewer --}}
+                <div class="doc-preview">
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        Preview file Word. Jika tidak tampil, silakan download file untuk melihat isi lengkap.
+                    </div>
+                    <iframe src="https://view.officeapps.live.com/op/embed.aspx?src={{ urlencode($fileUrl) }}" width="100%"
+                        height="800px" frameborder="0">
+                    </iframe>
+                </div>
+            @endif
+        </div>
+    @else
+        {{-- No File Uploaded - Show Original Template --}}
+        <div class="print-container">
+            <div class="letterhead">
+                <div class="logo-section">
+                    <div class="logo-placeholder">
+                        <i class="bi bi-building" style="font-size: 3rem;"></i>
+                    </div>
+                </div>
+                <div class="header-text">
+                    <h2 class="institution-name">NAMA INSTITUSI</h2>
+                    <p class="institution-address">
+                        Alamat Institusi<br>
+                        Telepon: (021) 123-4567 | Email: info@institusi.go.id
+                    </p>
+                </div>
+            </div>
+
+            <hr class="header-divider">
+
+            <div class="letter-content">
+                <table class="letter-meta">
+                    <tr>
+                        <td width="150">Nomor</td>
+                        <td width="20">:</td>
+                        <td><strong>{{ $surat->nomor_surat_full }}</strong></td>
+                    </tr>
+                    <tr>
+                        <td>Tanggal</td>
+                        <td>:</td>
+                        <td>{{ $surat->tanggal_surat->isoFormat('D MMMM YYYY') }}</td>
+                    </tr>
+                    <tr>
+                        <td>Tipe Surat</td>
+                        <td>:</td>
+                        <td>{{ $surat->tipeSurat->jenis_surat }}</td>
+                    </tr>
+                    <tr>
+                        <td>Kepada</td>
+                        <td>:</td>
+                        <td>{{ $surat->tujuan }}</td>
+                    </tr>
+                </table>
+
+                <div class="letter-body">
+                    <p><strong>Perihal: {{ $surat->perihal }}</strong></p>
+                    <div class="content-area">
+                        <p><em>(File surat belum diupload)</em></p>
+                    </div>
+                </div>
+
+                <div class="signature-section">
+                    <div class="signature-box">
+                        <p class="mb-1">{{ $surat->tipeSurat->jenis_surat }}</p>
+                        <p class="mb-5"><i>{{ $surat->approved_at ? $surat->approved_at->isoFormat('D MMMM YYYY') : '' }}</i>
+                        </p>
+                        <p class="mt-5 pt-5"><strong><u>{{ $surat->approver->name ?? '-' }}</u></strong></p>
+                        <p>{{ $surat->approver ? ucfirst($surat->approver->role) : '' }}</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    @endif
+
+    {{-- Action Buttons --}}
     <div class="print-actions">
-        <button onclick="window.print()" class="btn btn-gradient">
-            <i class="bi bi-printer me-2"></i>Cetak
-        </button>
-        <a href="{{ route('surat.show', $surat) }}" class="btn btn-secondary">
+        @if($surat->file_surat)
+            <a href="{{ route('surat.download', $surat) }}" class="btn btn-info btn-lg">
+                <i class="bi bi-download me-2"></i>Download File Surat
+            </a>
+        @endif
+        <a href="{{ route('surat.show', $surat) }}" class="btn btn-secondary btn-lg">
             <i class="bi bi-arrow-left me-2"></i>Kembali
         </a>
     </div>
 
     <style>
-        /* Print Styles */
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-
-            .print-container,
-            .print-container * {
-                visibility: visible;
-            }
-
-            .print-container {
-                position: absolute;
-                left: 0;
-                top: 0;
-                width: 100%;
-            }
-
-            .print-actions {
-                display: none;
-            }
-
-            .footer-info {
-                display: none;
-            }
+        /* Letter Info Card */
+        .letter-info-card {
+            max-width: 900px;
+            margin: 0 auto;
         }
 
-        /* Screen Styles */
+        /* File Preview Styles */
+        .file-preview-container {
+            max-width: 900px;
+            margin: 0 auto 2rem auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .pdf-preview embed,
+        .doc-preview iframe {
+            display: block;
+            border: none;
+        }
+
+        /* Print Container for No-File fallback */
         .print-container {
             background: white;
             max-width: 21cm;
@@ -138,10 +192,6 @@
             margin-bottom: 1rem;
         }
 
-        .logo-section {
-            flex-shrink: 0;
-        }
-
         .logo-placeholder {
             width: 80px;
             height: 80px;
@@ -151,10 +201,6 @@
             border: 2px solid #ddd;
             border-radius: 10px;
             background: #f8f9fa;
-        }
-
-        .header-text {
-            flex-grow: 1;
         }
 
         .institution-name {
@@ -169,7 +215,6 @@
             margin: 0.5rem 0 0 0;
             font-size: 0.875rem;
             color: #666;
-            line-height: 1.4;
         }
 
         .header-divider {
@@ -185,13 +230,6 @@
 
         .letter-meta td {
             padding: 0.25rem 0;
-            vertical-align: top;
-        }
-
-        .letter-body {
-            line-height: 1.8;
-            text-align: justify;
-            font-size: 1rem;
         }
 
         .content-area {
@@ -210,26 +248,35 @@
             min-width: 200px;
         }
 
-        .footer-info {
-            margin-top: 3rem;
-            padding-top: 1rem;
-            border-top: 1px solid #ddd;
-        }
-
+        /* Action Buttons */
         .print-actions {
             text-align: center;
             margin: 2rem auto;
-            max-width: 21cm;
+            max-width: 900px;
         }
 
         .print-actions .btn {
             margin: 0 0.5rem;
         }
 
-        @page {
-            size: A4;
-            margin: 0;
+        /* Print Styles */
+        @media print {
+
+            .letter-info-card,
+            .print-actions {
+                display: none !important;
+            }
+
+            .file-preview-container {
+                box-shadow: none;
+                margin: 0;
+                max-width: 100%;
+            }
+
+            .pdf-preview embed,
+            .doc-preview iframe {
+                height: 100vh;
+            }
         }
     </style>
-
 @endsection
